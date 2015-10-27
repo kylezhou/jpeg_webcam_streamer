@@ -1,18 +1,19 @@
-/**********
-This library is free software; you can redistribute it and/or modify it under
-the terms of the GNU Lesser General Public License as published by the
-Free Software Foundation; either version 2.1 of the License, or (at your
-option) any later version. (See <http://www.gnu.org/copyleft/lesser.html>.)
-
-This library is distributed in the hope that it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for
-more details.
-
-You should have received a copy of the GNU Lesser General Public License
-along with this library; if not, write to the Free Software Foundation, Inc.,
-59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
-**********/
+/*
+ Copyright (C) 2015, Kyle Zhou <kyle.zhou at live.com>
+ 
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+ 
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ 
+ You should have received a copy of the GNU General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 // Webcam MJPEG camera input device
 // Implementation
 
@@ -25,11 +26,16 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 #include <sys/time.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
-
+#ifndef JPEG_TEST
 #include <linux/videodev2.h>
+#endif
+
 #include "JpegFrameParser.hh"
 #include <algorithm> 
 #include <iostream>
+
+#ifndef JPEG_TEST
+static int xioctl(int fh, int request, void *arg);
 
 static int xioctl(int fh, int request, void *arg)
 {
@@ -41,15 +47,19 @@ static int xioctl(int fh, int request, void *arg)
     
     return r;
 }
+#endif
 
 WebcamJPEGDeviceSource*
 WebcamJPEGDeviceSource::createNew(UsageEnvironment& env,
 				  unsigned timePerFrame) {
-  int fd = open("/dev/video0", O_RDWR, 0);
-  if (fd == -1) {
-    env.setResultErrMsg("Failed to open input device file");
-    return NULL;
-  }
+    int fd = -1;
+#ifndef JPEG_TEST
+    fd = open("/dev/video0", O_RDWR, 0); // TODO: use argv instead of hardcoded dev
+    if (fd == -1) {
+        env.setResultErrMsg("Failed to open input device file");
+        return NULL;
+    }
+#endif
     try {
         return new WebcamJPEGDeviceSource(env, fd, timePerFrame);
     } catch (DeviceException) {
@@ -57,13 +67,13 @@ WebcamJPEGDeviceSource::createNew(UsageEnvironment& env,
     }
 }
 
+#ifndef JPEG_TEST
 int WebcamJPEGDeviceSource::initDevice(UsageEnvironment& env, int fd)
 {
     struct v4l2_capability cap;
     struct v4l2_cropcap cropcap;
     struct v4l2_crop crop;
     struct v4l2_format fmt;
-    int ret;
     if(-1 == xioctl(fd, VIDIOC_QUERYCAP, &cap)) {
         env.setResultErrMsg("QueryCap failed");
         return -1;
@@ -238,25 +248,33 @@ int WebcamJPEGDeviceSource::initDevice(UsageEnvironment& env, int fd)
     }
     return 0;
 }
+#endif // JPEG_TEST
 
 WebcamJPEGDeviceSource
 ::WebcamJPEGDeviceSource(UsageEnvironment& env, int fd, unsigned timePerFrame)
-  : JPEGVideoSource(env), fFd(fd), fTimePerFrame(timePerFrame), fNeedAFrame(False) {
-      
-      
-      if(initDevice(env, fd)) {
-          throw DeviceException();
-      }
-#ifdef JPEGTEST
-      payload = new unsigned char [50000];
-      FILE *fp = fopen("payload.jpg", "rb");
-      payload_sz = fread(payload, 1, 50000, fp);
-      printf("payload_sz=%ld\n", payload_sz);
-      fclose(fp);
+  : JPEGVideoSource(env), fFd(fd), fTimePerFrame(timePerFrame)
+{
+#ifdef JPEG_TEST
+    jpeg_dat = new unsigned char [MAX_JPEG_FILE_SZ];
+    FILE *fp = fopen("test.jpg", "rb");
+    if(fp==NULL) {
+        env.setResultErrMsg("could not open test.jpg.\n");
+        throw DeviceException();
+    }
+    jpeg_datlen = fread(jpeg_dat, 1, MAX_JPEG_FILE_SZ, fp);
+    fclose(fp);
+#else
+    if(initDevice(env, fd)) {
+        throw DeviceException();
+    }
 #endif
 }
 
-WebcamJPEGDeviceSource::~WebcamJPEGDeviceSource() {
+WebcamJPEGDeviceSource::~WebcamJPEGDeviceSource()
+{
+#ifdef JPEG_TEST
+    delete [] jpeg_dat;
+#else
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if(-1==xioctl(fFd, VIDIOC_STREAMOFF, &type)) {
         
@@ -267,46 +285,8 @@ WebcamJPEGDeviceSource::~WebcamJPEGDeviceSource() {
         }
     }
     ::close(fFd);
-#ifdef JPEGTEST
-    delete [] payload;
 #endif
 }
-
-size_t copyjpeg(void *to, void *from, size_t len);
-
-size_t copyjpeg(void *pto, void *pfrom, size_t len)
-{
-    unsigned char *to=(unsigned char*)pto, *from=(unsigned char*)pfrom;
-    int i=0;
-    size_t j=0;
-    unsigned int tmp, sz;
-    int flag = 0;
-    while(i<len) {
-        tmp = from[i]*256+from[i+1];
-        if(tmp>0xff00 && tmp<0xffff) {
-            if(j>0)
-                break;
-            i += 2;
-            if(tmp == 0xff01 || tmp>=0xffd0 && tmp<0xffd9) { // marker only segment (soi etc)
-                continue;
-            }
-            if(tmp == 0xffd9) { // eoi
-                break;
-            }
-            sz = from[i]*256+from[i+1];
-            i += sz;
-            if(tmp == 0xffda) { // sos
-                flag = 1;
-            }
-        }
-        else if(flag) {
-            to[j++] = from[i++];
-        }
-        
-    }
-    return j;
-}
-
 
 static int timeval_subtract(struct timeval *result, struct timeval *x, struct timeval *y)
 {
@@ -328,16 +308,26 @@ static int timeval_subtract(struct timeval *result, struct timeval *x, struct ti
 static float timeval_diff(struct timeval *x, struct timeval *y)
 {
     struct timeval result;
-    int neg = timeval_subtract(&result, x, y);
+    timeval_subtract(&result, x, y);
     return result.tv_sec + result.tv_usec/1000000.0;
 }
 
 static struct timezone Idunno;
 
-void WebcamJPEGDeviceSource::doGetNextFrame() {
-#ifndef JPEGTEST
+void WebcamJPEGDeviceSource::doGetNextFrame()
+{
     static unsigned long framecount = 0;
     static struct timeval starttime;
+    
+#ifdef JPEG_TEST
+    fFrameSize = jpeg_to_rtp(fTo, jpeg_dat, jpeg_datlen);
+    gettimeofday(&fLastCaptureTime, &Idunno);
+    if(framecount==0)
+        starttime = fLastCaptureTime;
+    framecount++;
+    fPresentationTime = fLastCaptureTime;
+    fDurationInMicroseconds = fTimePerFrame;
+#else
     struct v4l2_buffer buf;
     memset(&buf, 0, sizeof(buf));
     buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -354,31 +344,22 @@ void WebcamJPEGDeviceSource::doGetNextFrame() {
     if(framecount % 30 == 0)
         printf("frame rate=%f\n", (float)framecount/timeval_diff(&fLastCaptureTime, &starttime));
      */
-    //fDurationInMicroseconds = 100000;
     if(buf.bytesused > fMaxSize) {
         fprintf(stderr, "WebcamJPEGDeviceSource::doGetNextFrame(): read maximum buffer size: %d bytes.  Frame may be truncated\n", fMaxSize);
     }
-    //fFrameSize = copyjpeg(fTo, fBuffers[buf.index].start, std::min(buf.bytesused,fMaxSize));
     fFrameSize = jpeg_to_rtp(fTo, fBuffers[buf.index].start, std::min(buf.bytesused, fMaxSize));
     if(-1==xioctl(fFd, VIDIOC_QBUF, &buf)) {
         
     }
-    
-#else
-    memcpy(fTo, payload, payload_sz);
-    fFrameSize = payload_sz;
-    gettimeofday(&fLastCaptureTime, &Idunno);
-    fPresentationTime = fLastCaptureTime;
-    fDurationInMicroseconds = 33333;
-#endif
+#endif // JPEG_TEST
     // Switch to another task, and inform the reader that he has data:
     nextTask() = envir().taskScheduler().scheduleDelayedTask(0,
                     (TaskFunc*)FramedSource::afterGetting, this);
 }
 
-unsigned char calcQ(unsigned char const *qt);
+static unsigned char calcQ(unsigned char const *qt);
 
-unsigned char calcQ(unsigned char const *qt)
+static unsigned char calcQ(unsigned char const *qt)
 {
     unsigned int q;
     q = (qt[0]*100-50)/16;
@@ -392,36 +373,20 @@ unsigned char calcQ(unsigned char const *qt)
     else
         q = (200-q)/2;
     return (unsigned char) q;
-    
 }
 
 size_t WebcamJPEGDeviceSource::jpeg_to_rtp(void *pto, void *pfrom, size_t len)
 {
     unsigned char *to=(unsigned char*)pto, *from=(unsigned char*)pfrom;
-    unsigned short qtlen;
-    unsigned char const * qt;
     unsigned int datlen;
     unsigned char const * dat;
-    unsigned char q;
     if(parser.parse(from, len) == 0) { // successful parsing
-        /*qt = parser.quantizationTables(qtlen);
-        q = calcQ(qt);
-        //std::cout<<"Q="<<(int)q<<std::endl;
-        //parser.setQ(q);
-        
-         if(parser.qFactor() > 127) { // include qantization tables
-            *to++ = 0; // mbz
-            *to++ = 0; // precision. only support 8-bit
-            *to++ = (qtlen>>8) & 0xff; // length
-            *to++ = qtlen & 0xff;
-            memcpy(to, qt, qtlen);
-            to += qtlen;
-        }*/
         dat = parser.scandata(datlen);
         memcpy(to, dat, datlen);
         to += datlen;
+        return datlen;
     }
-    return to-(unsigned char*)pto;
+    return 0;
 }
 
 u_int8_t const * WebcamJPEGDeviceSource::quantizationTables(u_int8_t & precision, u_int16_t & length)
@@ -430,15 +395,22 @@ u_int8_t const * WebcamJPEGDeviceSource::quantizationTables(u_int8_t & precision
     return parser.quantizationTables(length);
 }
 
-u_int8_t WebcamJPEGDeviceSource::type() {
-  return parser.type();
+u_int8_t WebcamJPEGDeviceSource::type()
+{
+    return parser.type();
 }
-u_int8_t WebcamJPEGDeviceSource::qFactor() {
-  return parser.qFactor();
+
+u_int8_t WebcamJPEGDeviceSource::qFactor()
+{
+    return parser.qFactor();
 }
-u_int8_t WebcamJPEGDeviceSource::width() {
-  return parser.width();
+
+u_int8_t WebcamJPEGDeviceSource::width()
+{
+    return parser.width();
 }
-u_int8_t WebcamJPEGDeviceSource::height() {
-  return parser.height();
+
+u_int8_t WebcamJPEGDeviceSource::height()
+{
+    return parser.height();
 }

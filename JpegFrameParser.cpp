@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2011, W.L. Chuang <ponponli2000 at gmail.com>
+ Copyright (C) 2015, Kyle Zhou <kyle.zhou at live.com>
  
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
@@ -50,11 +50,11 @@ typedef struct
 
 
 JpegFrameParser::JpegFrameParser() :
-_width(0), _height(0), _type(0),
-_precision(0), _qFactor(255),
-_qTables(NULL), _qTablesLength(0),
-_restartInterval(0),
-_scandata(NULL), _scandataLength(0)
+    _width(0), _height(0), _type(0),
+    _precision(0), _qFactor(255),
+    _qTables(NULL), _qTablesLength(0),
+    _restartInterval(0),
+    _scandata(NULL), _scandataLength(0)
 {
     _qTables = new unsigned char[128 * 2];
     memset(_qTables, 8, 128 * 2);
@@ -62,12 +62,12 @@ _scandata(NULL), _scandataLength(0)
 
 JpegFrameParser::~JpegFrameParser()
 {
-    if (_qTables != NULL) delete[] _qTables;
+    if (_qTables != NULL)
+        delete[] _qTables;
 }
 
 unsigned int JpegFrameParser::scanJpegMarker(const unsigned char* data,
-                                             unsigned int size,
-                                             unsigned int* offset)
+                    unsigned int size, unsigned int* offset)
 {
     while ((data[(*offset)++] != START_MARKER) && ((*offset) < size));
     
@@ -184,17 +184,18 @@ invalid_comp:
 }
 
 unsigned int JpegFrameParser::readDQT(const unsigned char* data,
-                                      unsigned int size,
-                                      unsigned int offset)
+                unsigned int size, unsigned int offset)
 {
     unsigned int quant_size, tab_size;
     unsigned char prec;
     unsigned char id;
     
-    if (offset + 2 > size) goto too_small;
+    if (offset + 2 > size)
+        goto too_small;
     
     quant_size = _jpegHeaderSize(data, offset);
-    if (quant_size < 2) goto small_quant_size;
+    if (quant_size < 2)
+        goto small_quant_size;
     
     /* clamp to available data */
     if (offset + quant_size > size) {
@@ -206,10 +207,12 @@ unsigned int JpegFrameParser::readDQT(const unsigned char* data,
     
     while (quant_size > 0) {
         /* not enough to read the id */
-        if (offset + 1 > size) break;
+        if (offset + 1 > size)
+            break;
         
         id = data[offset] & 0x0f;
-        if (id == 15) goto invalid_id;
+        if (id == 15)
+            goto invalid_id;
         
         prec = (data[offset] & 0xf0) >> 4;
         if (prec) {
@@ -221,7 +224,8 @@ unsigned int JpegFrameParser::readDQT(const unsigned char* data,
         }
         
         /* there is not enough for the table */
-        if (quant_size < tab_size + 1) goto no_table;
+        if (quant_size < tab_size + 1)
+            goto no_table;
         
         //LOGGY("Copy quantization table: %u\n", id);
         memcpy(&_qTables[id * tab_size], &data[offset + 1], tab_size);
@@ -260,10 +264,12 @@ int JpegFrameParser::readDRI(const unsigned char* data,
     off = *offset;
     
     /* we need at least 4 bytes for the DRI */
-    if (off + 4 > size) goto wrong_size;
+    if (off + 4 > size)
+        goto wrong_size;
     
     dri_size = _jpegHeaderSize(data, off);
-    if (dri_size < 4) goto wrong_length;
+    if (dri_size < 4)
+        goto wrong_length;
     
     *offset += dri_size;
     off += 2;
@@ -327,7 +333,7 @@ int JpegFrameParser::parse(unsigned char* data, unsigned int size)
                 LOGGY("EOI reached before SOS!?\n");
                 break;
             case SOI_MARKER:
-                //LOGGY("SOI found\n");
+                LOGGY("SOI found\n");
                 break;
             case DRI_MARKER:
                 LOGGY("DRI found\n");

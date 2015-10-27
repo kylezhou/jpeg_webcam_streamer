@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2011, W.L. Chuang <ponponli2000 at gmail.com>
+ Copyright (C) 2015, Kyle Zhou <kyle.zhou at live.com>
  
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
@@ -75,4 +75,4 @@ private:
     unsigned int   _scandataLength;
 };
 
-#endif /* _JPEG_FRAME_PARSER_HH_INCLUDED */
+#endif // _JPEG_FRAME_PARSER_HH_INCLUDED

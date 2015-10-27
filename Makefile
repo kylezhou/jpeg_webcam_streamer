@@ -1,6 +1,6 @@
 # set up basic variables
 CC = g++
-CFLAGS = -c -Wall -DNDEBUG
+override CFLAGS += -c -Wall -DNDEBUG
 LDFLAGS =
 
 # list of sources
@@ -12,7 +12,7 @@ DEPS = JpegFrameParser.hh WebcamJPEGDeviceSource.hh
 EXECUTABLE = WebcamStreamer
 
 # live555 specific flags
-CFLAGS += `pkg-config --cflags live555`
+override CFLAGS += `pkg-config --cflags live555`
 LDFLAGS += `pkg-config --libs live555`
 
 .PHONY: all clean
