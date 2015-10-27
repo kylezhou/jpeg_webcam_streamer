@@ -1,6 +1,6 @@
 # set up basic variables
 CC = g++
-CFLAGS = -c -Wall
+CFLAGS = -c -Wall -DNDEBUG
 LDFLAGS =
 
 # list of sources
