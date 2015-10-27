@@ -12,8 +12,8 @@ DEPS = JpegFrameParser.hh WebcamJPEGDeviceSource.hh
 EXECUTABLE = WebcamStreamer
 
 # live555 specific flags
-CFLAGS += `pkg-config —cflags live555`
-LDFLAGS += `pkg-config —libs live555`
+CFLAGS += `pkg-config --cflags live555`
+LDFLAGS += `pkg-config --libs live555`
 
 all: $(SOURCES) $(EXECUTABLE)
 
@@ -21,7 +21,7 @@ $(EXECUTABLE): $(OBJECTS)
 	$(CC) $^ -o $@ $(LDFLAGS)
 
 %.o : %.cpp $(DEPS)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $< -o $@
 
 clean:
 	rm -f $(OBJECTS) $(EXECUTABLE)
