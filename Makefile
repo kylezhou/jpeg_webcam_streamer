@@ -6,6 +6,7 @@ LDFLAGS =
 # list of sources
 SOURCES = JpegFrameParser.cpp WebcamJPEGDeviceSource.cpp WebcamStreamer.cpp
 OBJECTS = $(SOURCES:.cpp=.o)
+DEPS = JpegFrameParser.hh WebcamJPEGDeviceSource.hh
 
 # name of executable target
 EXECUTABLE = WebcamStreamer
@@ -17,10 +18,10 @@ LDFLAGS += `pkg-config —libs live555`
 all: $(SOURCES) $(EXECUTABLE)
 
 $(EXECUTABLE): $(OBJECTS)
-$(CC) $(OBJECTS) -o $@ $(LDFLAGS)
+	$(CC) $^ -o $@ $(LDFLAGS)
 
-.cpp.o:
-$(CC) $(CFLAGS) $< -o $@
+%.o : %.cpp $(DEPS)
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-rm -f $(OBJECTS) $(EXECUTABLE)
+	rm -f $(OBJECTS) $(EXECUTABLE)
