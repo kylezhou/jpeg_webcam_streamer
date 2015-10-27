@@ -15,12 +15,14 @@ EXECUTABLE = WebcamStreamer
 CFLAGS += `pkg-config --cflags live555`
 LDFLAGS += `pkg-config --libs live555`
 
-all: $(SOURCES) $(EXECUTABLE)
+.PHONY: all clean
+
+all: $(EXECUTABLE)
 
 $(EXECUTABLE): $(OBJECTS)
 	$(CC) $^ -o $@ $(LDFLAGS)
 
-%.o : %.cpp $(DEPS)
+%.o: %.cpp $(DEPS)
 	$(CC) $(CFLAGS) $< -o $@
 
 clean:
