@@ -17,7 +17,7 @@
 
 #ifndef _JPEG_FRAME_PARSER_HH_INCLUDED
 #define _JPEG_FRAME_PARSER_HH_INCLUDED
-
+#include "config.h"
 
 class JpegFrameParser
 {

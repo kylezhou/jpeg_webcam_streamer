@@ -56,7 +56,7 @@ WebcamJPEGDeviceSource::createNew(UsageEnvironment& env,
 #ifndef JPEG_TEST
     fd = open("/dev/video0", O_RDWR, 0); // TODO: use argv instead of hardcoded dev
     if (fd == -1) {
-        env.setResultErrMsg("Failed to open input device file");
+        env.setResultErrMsg("Failed to open input device file\n");
         return NULL;
     }
 #endif
