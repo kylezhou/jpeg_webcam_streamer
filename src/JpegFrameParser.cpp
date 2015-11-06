@@ -15,12 +15,12 @@
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <string.h>
+#include <cstring> /* memset() etc. */
 
 #include "JpegFrameParser.hh"
 
 #ifndef NDEBUG
-#include <stdio.h>
+#include <cstdio>
 #define LOGGY(format, ...) fprintf (stderr, format, ##__VA_ARGS__)
 #else
 #define LOGGY(format, ...) 

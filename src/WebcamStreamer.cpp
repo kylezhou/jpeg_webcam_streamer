@@ -20,11 +20,11 @@
 
 #include "liveMedia.hh"
 #include "GroupsockHelper.hh"
-
 #include "BasicUsageEnvironment.hh"
+
 #include "WebcamJPEGDeviceSource.hh"
 
-#include <unistd.h> // for getopt
+#include <unistd.h> /* GNU getopt */
 
 UsageEnvironment* env;
 char* progName;
@@ -36,7 +36,7 @@ void play(); // forward
 
 void usage()
 {
-    *env << "Usage: " << progName << " -f <frames-per-second> [-d <webcam-dev-file>] [-t test-jpeg-file]\n";
+    *env << "Usage: " << progName << " -f <frames-per-second> [-d <webcam-dev-file>] [-t <test-jpeg-file>]\n";
     exit(1);
 }
 

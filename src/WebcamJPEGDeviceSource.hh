@@ -24,12 +24,10 @@
 #include "JpegFrameParser.hh"
 
 #include <exception>
+class DeviceException : public std::exception {
+};
 
 #define MAX_JPEG_FILE_SZ 100000
-
-class DeviceException : public std::exception {
-    
-};
 
 class WebcamJPEGDeviceSource: public JPEGVideoSource {
 public:

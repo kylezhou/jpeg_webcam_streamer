@@ -18,21 +18,17 @@
 // Implementation
 
 #include "WebcamJPEGDeviceSource.hh"
-#include <fcntl.h>              /* low-level i/o */
-#include <unistd.h>
-#include <errno.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/time.h>
-#include <sys/mman.h>
-#include <sys/ioctl.h>
 #ifdef ENABLE_WEBCAM
-#include <linux/videodev2.h>
+#include <fcntl.h>              /* low-level i/o: open() etc.*/
+#include <sys/mman.h>           /* mmap() etc. */
+#include <sys/ioctl.h>          /* ioctl() etc. */
+#include <linux/videodev2.h>    /* v4l2 */
 #endif
 
+#include <sys/time.h>           /* struct timeval, gettimeofday() etc. */
+#include <algorithm>            /* min() max() etc. */
+
 #include "JpegFrameParser.hh"
-#include <algorithm> 
-#include <iostream>
 
 #ifdef ENABLE_WEBCAM
 static int xioctl(int fh, int request, void *arg);
