@@ -26,7 +26,7 @@
 #include <sys/time.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
-#ifndef JPEG_TEST
+#ifdef ENABLE_WEBCAM
 #include <linux/videodev2.h>
 #endif
 
@@ -34,7 +34,7 @@
 #include <algorithm> 
 #include <iostream>
 
-#ifndef JPEG_TEST
+#ifdef ENABLE_WEBCAM
 static int xioctl(int fh, int request, void *arg);
 
 static int xioctl(int fh, int request, void *arg)
@@ -51,23 +51,69 @@ static int xioctl(int fh, int request, void *arg)
 
 WebcamJPEGDeviceSource*
 WebcamJPEGDeviceSource::createNew(UsageEnvironment& env,
-				  unsigned timePerFrame) {
+				  unsigned timePerFrame, char const * camDev, char const * testJpeg) {
     int fd = -1;
-#ifndef JPEG_TEST
-    fd = open("/dev/video0", O_RDWR, 0); // TODO: use argv instead of hardcoded dev
-    if (fd == -1) {
-        env.setResultErrMsg("Failed to open input device file\n");
-        return NULL;
+#ifdef ENABLE_WEBCAM
+    if(!testJpeg) {
+        fd = open(camDev, O_RDWR, 0); // TODO: use argv instead of hardcoded dev
+        if (fd == -1) {
+            env.setResultMsg("Failed to open input webcam device ", camDev);
+            return NULL;
+        }
     }
 #endif
     try {
-        return new WebcamJPEGDeviceSource(env, fd, timePerFrame);
+        return new WebcamJPEGDeviceSource(env, fd, timePerFrame, testJpeg);
     } catch (DeviceException) {
         return NULL;
     }
 }
 
-#ifndef JPEG_TEST
+WebcamJPEGDeviceSource
+::WebcamJPEGDeviceSource(UsageEnvironment& env, int fd, unsigned timePerFrame, char const *testJpeg)
+  : JPEGVideoSource(env), fFd(fd), fTimePerFrame(timePerFrame), fTestJpeg(testJpeg)
+{
+    if(fTestJpeg) {
+        jpeg_dat = new unsigned char [MAX_JPEG_FILE_SZ];
+        FILE *fp = fopen(fTestJpeg, "rb");
+        if(fp==NULL) {
+            env.setResultMsg("Could not open test jpeg file ", fTestJpeg);
+            throw DeviceException();
+        }
+        jpeg_datlen = fread(jpeg_dat, 1, MAX_JPEG_FILE_SZ, fp);
+        fclose(fp);
+    }
+#ifdef ENABLE_WEBCAM
+    else {
+        if(initDevice(env, fd)) {
+            throw DeviceException();
+        }
+    }
+#endif
+}
+
+WebcamJPEGDeviceSource::~WebcamJPEGDeviceSource()
+{
+    if(fTestJpeg) {
+        delete [] jpeg_dat;
+    }
+#ifdef ENABLE_WEBCAM
+    else {
+        enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        if(-1==xioctl(fFd, VIDIOC_STREAMOFF, &type)) {
+            
+        }
+        for(int i=0; i< fNbuffers; i++) {
+            if(-1==munmap(fBuffers[i].start, fBuffers[i].length)) {
+                
+            }
+        }
+        ::close(fFd);
+    }
+#endif
+}
+
+#ifdef ENABLE_WEBCAM
 int WebcamJPEGDeviceSource::initDevice(UsageEnvironment& env, int fd)
 {
     struct v4l2_capability cap;
@@ -248,45 +294,7 @@ int WebcamJPEGDeviceSource::initDevice(UsageEnvironment& env, int fd)
     }
     return 0;
 }
-#endif // JPEG_TEST
-
-WebcamJPEGDeviceSource
-::WebcamJPEGDeviceSource(UsageEnvironment& env, int fd, unsigned timePerFrame)
-  : JPEGVideoSource(env), fFd(fd), fTimePerFrame(timePerFrame)
-{
-#ifdef JPEG_TEST
-    jpeg_dat = new unsigned char [MAX_JPEG_FILE_SZ];
-    FILE *fp = fopen("test.jpg", "rb");
-    if(fp==NULL) {
-        env.setResultErrMsg("could not open test.jpg.\n");
-        throw DeviceException();
-    }
-    jpeg_datlen = fread(jpeg_dat, 1, MAX_JPEG_FILE_SZ, fp);
-    fclose(fp);
-#else
-    if(initDevice(env, fd)) {
-        throw DeviceException();
-    }
-#endif
-}
-
-WebcamJPEGDeviceSource::~WebcamJPEGDeviceSource()
-{
-#ifdef JPEG_TEST
-    delete [] jpeg_dat;
-#else
-    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    if(-1==xioctl(fFd, VIDIOC_STREAMOFF, &type)) {
-        
-    }
-    for(int i=0; i< fNbuffers; i++) {
-        if(-1==munmap(fBuffers[i].start, fBuffers[i].length)) {
-            
-        }
-    }
-    ::close(fFd);
-#endif
-}
+#endif // ENABLE_WEBCAM
 
 static int timeval_subtract(struct timeval *result, struct timeval *x, struct timeval *y)
 {
@@ -319,39 +327,42 @@ void WebcamJPEGDeviceSource::doGetNextFrame()
     static unsigned long framecount = 0;
     static struct timeval starttime;
     
-#ifdef JPEG_TEST
-    fFrameSize = jpeg_to_rtp(fTo, jpeg_dat, jpeg_datlen);
-    gettimeofday(&fLastCaptureTime, &Idunno);
-    if(framecount==0)
-        starttime = fLastCaptureTime;
-    framecount++;
-    fPresentationTime = fLastCaptureTime;
-    fDurationInMicroseconds = fTimePerFrame;
-#else
-    struct v4l2_buffer buf;
-    memset(&buf, 0, sizeof(buf));
-    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    buf.memory = V4L2_MEMORY_MMAP;
-    if(-1==xioctl(fFd, VIDIOC_DQBUF, &buf)) { // this will block if no frames are available
-        
+    if(fTestJpeg) {
+        fFrameSize = jpeg_to_rtp(fTo, jpeg_dat, jpeg_datlen);
+        gettimeofday(&fLastCaptureTime, &Idunno);
+        if(framecount==0)
+            starttime = fLastCaptureTime;
+        framecount++;
+        fPresentationTime = fLastCaptureTime;
+        fDurationInMicroseconds = fTimePerFrame;
     }
-    gettimeofday(&fLastCaptureTime, &Idunno);
-    if(framecount==0)
-        starttime = fLastCaptureTime;
-    framecount++;
-    fPresentationTime = fLastCaptureTime;
-    /*
-    if(framecount % 30 == 0)
-        printf("frame rate=%f\n", (float)framecount/timeval_diff(&fLastCaptureTime, &starttime));
-     */
-    if(buf.bytesused > fMaxSize) {
-        fprintf(stderr, "WebcamJPEGDeviceSource::doGetNextFrame(): read maximum buffer size: %d bytes.  Frame may be truncated\n", fMaxSize);
+#ifdef ENABLE_WEBCAM
+    else {
+        struct v4l2_buffer buf;
+        memset(&buf, 0, sizeof(buf));
+        buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = V4L2_MEMORY_MMAP;
+        if(-1==xioctl(fFd, VIDIOC_DQBUF, &buf)) { // this will block if no frames are available
+            
+        }
+        gettimeofday(&fLastCaptureTime, &Idunno);
+        if(framecount==0)
+            starttime = fLastCaptureTime;
+        framecount++;
+        fPresentationTime = fLastCaptureTime;
+        /*
+        if(framecount % 30 == 0)
+            printf("frame rate=%f\n", (float)framecount/timeval_diff(&fLastCaptureTime, &starttime));
+         */
+        if(buf.bytesused > fMaxSize) {
+            fprintf(stderr, "WebcamJPEGDeviceSource::doGetNextFrame(): read maximum buffer size: %d bytes.  Frame may be truncated\n", fMaxSize);
+        }
+        fFrameSize = jpeg_to_rtp(fTo, fBuffers[buf.index].start, std::min(buf.bytesused, fMaxSize));
+        if(-1==xioctl(fFd, VIDIOC_QBUF, &buf)) {
+            
+        }
     }
-    fFrameSize = jpeg_to_rtp(fTo, fBuffers[buf.index].start, std::min(buf.bytesused, fMaxSize));
-    if(-1==xioctl(fFd, VIDIOC_QBUF, &buf)) {
-        
-    }
-#endif // JPEG_TEST
+#endif // ENABLE_WEBCAM
     // Switch to another task, and inform the reader that he has data:
     nextTask() = envir().taskScheduler().scheduleDelayedTask(0,
                     (TaskFunc*)FramedSource::afterGetting, this);

@@ -34,12 +34,12 @@ class DeviceException : public std::exception {
 class WebcamJPEGDeviceSource: public JPEGVideoSource {
 public:
     static WebcamJPEGDeviceSource* createNew(UsageEnvironment& env,
-					   unsigned timePerFrame);
+					   unsigned timePerFrame, char const *camDev="/dev/video0", char const *testJpeg=NULL);
     // "timePerFrame" is in microseconds
 
 protected:
     WebcamJPEGDeviceSource(UsageEnvironment& env,
-			 int fd, unsigned timePerFrame);
+			 int fd, unsigned timePerFrame, char const *testJpeg=NULL);
     // called only by createNew()
     virtual ~WebcamJPEGDeviceSource();
 
@@ -53,7 +53,7 @@ private:
     virtual u_int8_t const * quantizationTables(u_int8_t & precision, u_int16_t & length);
 
 private:
-#ifndef JPEG_TEST
+#ifdef ENABLE_WEBCAM
     int initDevice(UsageEnvironment& env, int fd);
 #endif
     struct buffer {
@@ -67,16 +67,15 @@ private:
     int fFd;
     unsigned fTimePerFrame;
     struct timeval fLastCaptureTime;
-#ifndef JPEG_TEST
+    char const * fTestJpeg;
+#ifdef ENABLE_WEBCAM
     struct buffer *fBuffers;
     unsigned int fNbuffers;
 #endif
     JpegFrameParser parser;
     
-#ifdef JPEG_TEST
-    unsigned char *jpeg_dat;
+    unsigned char *jpeg_dat; // for jpeg_test
     size_t jpeg_datlen;
-#endif
 
 };
 

@@ -1,9 +1,16 @@
+option(ENABLE_WEBCAM "enable webcam [default ON]" ON)
+
 include(CheckIncludeFiles)
 CHECK_INCLUDE_FILES(linux/videodev2.h HAVE_VIDEODEV2)
-if(HAVE_VIDEODEV2)
-  set(JPEG_TEST FALSE)
+if(HAVE_VIDEODEV2 AND ENABLE_WEBCAM)
+  set(ENABLE_WEBCAM ON)
 else()
-  set(JPEG_TEST TRUE)
+  set(ENABLE_WEBCAM OFF) # disable webcam if v4l2 is not found
+endif()
+
+option(ENABLE_DEBUG "enable debug mode [default OFF]" OFF)
+if(NOT ENABLE_DEBUG)
+  set(NDEBUG ON)
 endif()
 
 configure_file(

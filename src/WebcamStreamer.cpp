@@ -24,15 +24,19 @@
 #include "BasicUsageEnvironment.hh"
 #include "WebcamJPEGDeviceSource.hh"
 
+#include <unistd.h> // for getopt
+
 UsageEnvironment* env;
 char* progName;
 int fps;
+char const * testJpeg = NULL;
+char const * camDev = "/dev/video0";
 
 void play(); // forward
 
 void usage()
 {
-    *env << "Usage: " << progName << " <frames-per-second>\n";
+    *env << "Usage: " << progName << " -f <frames-per-second> [-d <webcam-dev-file>] [-t test-jpeg-file]\n";
     exit(1);
 }
 
@@ -44,14 +48,70 @@ int main(int argc, char** argv)
 
     //OutPacketBuffer::numPacketsLimit = 100;
     // Allow for up to 100 RTP packets per JPEG frame
-
+    
+    int c;
     progName = argv[0];
-    if (argc != 2)
-        usage();
-
-    if (sscanf(argv[1], "%d", &fps) != 1 || fps <= 0) {
+    opterr = 0;
+    char tmp[2] = {0,0};
+    while((c=getopt(argc, argv, "d:f:t:h")) != -1)
+    {
+        switch(c) {
+        case 'd':
+#ifndef ENABLE_WEBCAM
+            *env << "Webcam support is not included in this program.\n";
+            return 3;
+#else
+            camDev = optarg;
+#endif
+            break;
+            
+        case 'f':
+            if(sscanf(optarg, "%d", &fps)!=1 || fps <= 0) {
+                tmp[0]=optopt;
+                *env << "Option -" << tmp << " has illegal value " << optarg << ".\n";
+                usage();
+            }
+            break;
+            
+        case 't':
+            testJpeg = optarg;
+            break;
+        
+        case 'h':
+            usage();
+            break;
+            
+        case '?':
+            tmp[0] = optopt;
+            if(optopt == 'f' or optopt == 't' or optopt == 'd')
+                *env << "Option -" << tmp << " requires an argument.\n";
+            else if(isprint(optopt))
+                *env << "Unknown option -"<< tmp <<".\n";
+            else
+                *env << "Unknown option character \\" << optopt << ".\n";
+            
+        default:
+            usage();
+        }
+    }
+    for(int i=optind; i<argc; i++)
+        *env<<"Non-option argument "<<argv[i]<<".\n";
+    if(optind < argc) {
+        *env<<"There are non-option arguments\n";
         usage();
     }
+#ifndef ENABLE_WEBCAM
+    if(!testJpeg) {
+        *env << "Your have to specify a test jpeg file since webcam support is not included in this program.\n";
+        usage();
+    }
+#endif
+    if(fps<=0)
+    {
+        *env<<"You have to specify a valid fps.\n";
+        usage();
+    }
+    *env << "camDev="<<camDev<<", fps=" << fps << ", testJpeg=" << testJpeg << ".\n";
 
     play();
 
@@ -75,10 +135,9 @@ void play() {
     // Open the webcam
     unsigned timePerFrame = 1000000/fps; // microseconds
     sessionState.source
-        = WebcamJPEGDeviceSource::createNew(*env, timePerFrame);
+        = WebcamJPEGDeviceSource::createNew(*env, timePerFrame, camDev, testJpeg);
     if (sessionState.source == NULL) {
-        *env << "Unable to open webcam: "
-            << env->getResultMsg() << "\n";
+        *env << env->getResultMsg() << "\n";
         exit(1);
     }
 
