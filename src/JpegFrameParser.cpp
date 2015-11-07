@@ -66,12 +66,19 @@ JpegFrameParser::~JpegFrameParser()
         delete[] _qTables;
 }
 
+/*! \brief Scan and return a JPEG marker
+ *  This function simply scans through the data for the first 0xff, and return the byte that follows 0xff.
+ *  \param data The JPEG data buffer
+ *  \param size The total length of data buffer
+ *  \param offset The current position (should be updated once reading completed)
+ *  \return The marker (one byte only without 0xFF)
+ */
 unsigned int JpegFrameParser::scanJpegMarker(const unsigned char* data,
                     unsigned int size, unsigned int* offset)
 {
     while ((data[(*offset)++] != START_MARKER) && ((*offset) < size));
     
-    if ((*offset) >= size) {
+    if ((*offset) >= size) { // no more data left
         return EOI_MARKER;
     } else {
         unsigned int marker;
@@ -83,11 +90,74 @@ unsigned int JpegFrameParser::scanJpegMarker(const unsigned char* data,
     }
 }
 
+/*! \brief Get the header size
+ *  This function simply calculate the size from the two bytes in data[offset] and data[offset+1], MSB first.
+ *  \param data The JPEG data buffer
+ *  \param offset The current position (it is not updated by this function)
+ *  \return The header size
+ */
 static unsigned int _jpegHeaderSize(const unsigned char* data, unsigned int offset)
 {
     return data[offset] << 8 | data[offset + 1];
 }
 
+/*! \brief Read the JFIF marker segment
+ *
+ *  \param data The JPEG data buffer
+ *  \param size The total length of data buffer
+ *  \param offset The current position (should be updated once reading completed). offset should point to the segment size field when calling this function.
+ *  \return status: 0 - success, otherwise failure
+ */
+int JpegFrameParser::readJFIF(const unsigned char* data, unsigned int size,
+                             unsigned int* offset)
+{
+    unsigned int off, jfif_size;
+    unsigned int major, minor;
+    unsigned int unit;
+    unsigned int xden, yden, xthumb, ythumb;
+    
+    off = *offset;
+    if(off + 16 > size) goto wrong_size;
+    jfif_size = _jpegHeaderSize(data, off);
+    if(jfif_size < 16) goto wrong_length;
+    *offset += jfif_size; // offset points to the next segment marker
+    off += 2; // skip size
+    if(strncmp((const char*)data+off, "JFIF", 5) != 0)
+        goto wrong_id;
+    off += 5;
+    major = data[off++];
+    minor = data[off++];
+    unit = data[off++];
+    xden = _jpegHeaderSize(data, off);
+    off += 2;
+    yden = _jpegHeaderSize(data, off);
+    off += 2;
+    xthumb = data[off++];
+    ythumb = data[off++];
+    LOGGY("verion=%d.%d, unit=%d, xden=%d, yden=%d, xthumb=%d, ythumb=%d\n", major, minor, unit, xden, yden, xthumb, ythumb);
+    return 0;
+    
+wrong_size:
+    LOGGY("Wrong JFIF size\n");
+    return -1;
+    
+wrong_length:
+    LOGGY("Wrong JFIF length\n");
+    return -1;
+
+wrong_id:
+    LOGGY("Wrong JFIF id\n");
+    return -1;
+
+}
+
+/*! \brief Read the SOF marker segment
+ *
+ *  \param data The JPEG data buffer
+ *  \param size The total length of data buffer
+ *  \param offset The current position (should be updated once reading completed). offset should point to the segment size field when calling this function.
+ *  \return status: 0 - success, otherwise failure
+ */
 int JpegFrameParser::readSOF(const unsigned char* data, unsigned int size,
                              unsigned int* offset)
 {
@@ -105,7 +175,7 @@ int JpegFrameParser::readSOF(const unsigned char* data, unsigned int size,
     sof_size = _jpegHeaderSize(data, off);
     if (sof_size < 17) goto wrong_length;
     
-    *offset += sof_size;
+    *offset += sof_size; // offset points to the next segment
     
     /* skip size */
     off += 2;
@@ -125,7 +195,10 @@ int JpegFrameParser::readSOF(const unsigned char* data, unsigned int size,
     _height = height / 8;
     
     /* we only support 3 components */
-    if (data[off++] != 3) goto bad_components;
+    if (data[off++] != 3) {
+        LOGGY("Number of components are %d. Not supported.\n", data[off-1]);
+        goto bad_components;
+    }
     
     infolen = 0;
     for (i = 0; i < 3; i++) {
@@ -148,13 +221,24 @@ int JpegFrameParser::readSOF(const unsigned char* data, unsigned int size,
     } else if (info[0].samp == 0x22) {
         _type = 1;
     } else {
+        LOGGY("Sampling factor of comp0 is %02x. NOT supported.\n", info[0].samp);
         goto invalid_comp;
     }
     
-    if (!(info[1].samp == 0x11)) goto invalid_comp;
-    if (!(info[2].samp == 0x11)) goto invalid_comp;
-    if (info[1].qt != info[2].qt) goto invalid_comp;
+    if (info[1].samp != 0x11) {
+        LOGGY("Sampling factor of comp1 is %02x. NOT supported.\n", info[1].samp);
+        goto invalid_comp;
+    }
+    if (info[2].samp != 0x11) {
+        LOGGY("Sampling factor of comp2 is %02x. NOT supported.\n", info[2].samp);
+        goto invalid_comp;
+    }
+    if (info[1].qt != info[2].qt) {
+        LOGGY("Quantization tables for comp1 (%d) and comp2 (%d) are not equal. NOT supported.\n", info[1].qt, info[2].qt);
+        goto invalid_comp;
+    }
     
+    LOGGY("width=%d, height=%d\n", width, height);
     return 0;
     
     /* ERRORS */
@@ -183,6 +267,13 @@ invalid_comp:
     return -1;
 }
 
+/*! \brief Read the DQT marker segment
+ *
+ *  \param data The JPEG data buffer
+ *  \param size The total length of data buffer
+ *  \param offset The current position (this function does NOT update offset). offset should point to the segment size field when calling this function.
+ *  \return new offset that points to the next segment marker
+ */
 unsigned int JpegFrameParser::readDQT(const unsigned char* data,
                 unsigned int size, unsigned int offset)
 {
@@ -256,6 +347,13 @@ no_table:
     goto done;
 }
 
+/*! \brief Read the DRI marker segment
+ *
+ *  \param data The JPEG data buffer
+ *  \param size The total length of data buffer
+ *  \param offset The current position (should be updated once reading completed). offset should point to the segment size field when calling this function.
+ *  \return status: 0 - success, otherwise failure (or DRI disabled)
+ */
 int JpegFrameParser::readDRI(const unsigned char* data,
                              unsigned int size, unsigned int* offset)
 {
@@ -271,7 +369,7 @@ int JpegFrameParser::readDRI(const unsigned char* data,
     if (dri_size < 4)
         goto wrong_length;
     
-    *offset += dri_size;
+    *offset += dri_size; // point to the next segment marker
     off += 2;
     
     _restartInterval = (data[off] << 8) | data[off + 1];
@@ -301,6 +399,7 @@ int JpegFrameParser::parse(unsigned char* data, unsigned int size)
     _scandataLength = 0;
     
     unsigned int offset = 0;
+    unsigned int jfifFound = 0;
     unsigned int dqtFound = 0;
     unsigned int sosFound = 0;
     unsigned int sofFound = 0;
@@ -310,21 +409,33 @@ int JpegFrameParser::parse(unsigned char* data, unsigned int size)
     while ((sosFound == 0) && (offset < size)) {
         switch (scanJpegMarker(data, size, &offset)) {
             case JFIF_MARKER:
+                LOGGY("JFIF marker found!\n");
+                if (readJFIF(data, size, &offset) != 0) {
+                    goto invalid_format;
+                }
+                break;
             case CMT_MARKER:
+                LOGGY("CMT marker found!\n");
+                offset += _jpegHeaderSize(data, offset); // skip
+                break;
             case DHT_MARKER:
-                offset += _jpegHeaderSize(data, offset);
+                LOGGY("DHT marker found!\n");
+                offset += _jpegHeaderSize(data, offset); // skip
                 break;
             case SOF_MARKER:
+                LOGGY("SOF marker found!\n");
                 if (readSOF(data, size, &offset) != 0) {
                     goto invalid_format;
                 }
                 sofFound = 1;
                 break;
             case DQT_MARKER:
+                LOGGY("DQT marker found!\n");
                 offset = readDQT(data, size, offset);
                 dqtFound = 1;
                 break;
             case SOS_MARKER:
+                LOGGY("SOS marker found!\n");
                 sosFound = 1;
                 jpeg_header_size = offset + _jpegHeaderSize(data, offset);
                 break;

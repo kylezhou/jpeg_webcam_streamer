@@ -27,7 +27,9 @@
 class DeviceException : public std::exception {
 };
 
-#define MAX_JPEG_FILE_SZ 100000
+#ifndef MAX_JPEG_FILE_SZ
+#define MAX_JPEG_FILE_SZ 300000
+#endif
 
 class WebcamJPEGDeviceSource: public JPEGVideoSource {
 public:

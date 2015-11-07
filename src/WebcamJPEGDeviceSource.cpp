@@ -78,6 +78,10 @@ WebcamJPEGDeviceSource
         }
         jpeg_datlen = fread(jpeg_dat, 1, MAX_JPEG_FILE_SZ, fp);
         fclose(fp);
+        if(parser.parse(jpeg_dat, jpeg_datlen)) { // test jpeg file only needs to be parsed once
+            env.setResultMsg("The test jpeg file ", fTestJpeg, " is not supported.");
+            throw DeviceException();
+        }
     }
 #ifdef ENABLE_WEBCAM
     else {
@@ -387,7 +391,7 @@ size_t WebcamJPEGDeviceSource::jpeg_to_rtp(void *pto, void *pfrom, size_t len)
     unsigned char *to=(unsigned char*)pto, *from=(unsigned char*)pfrom;
     unsigned int datlen;
     unsigned char const * dat;
-    if(parser.parse(from, len) == 0) { // successful parsing
+    if(fTestJpeg || parser.parse(from, len) == 0) { // successful parsing. no parsing is required for test jpeg mode
         dat = parser.scandata(datlen);
         memcpy(to, dat, datlen);
         to += datlen;

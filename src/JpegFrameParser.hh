@@ -52,6 +52,8 @@ private:
     unsigned int scanJpegMarker(const unsigned char* data,
                                 unsigned int size,
                                 unsigned int* offset);
+    int readJFIF(const unsigned char* data, unsigned int size,
+                 unsigned int* offset);
     int readSOF(const unsigned char* data,
                 unsigned int size, unsigned int* offset);
     unsigned int readDQT(const unsigned char* data,
